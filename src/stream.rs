@@ -1,4 +1,4 @@
-//! Connection abstraction over plain TCP and (optionally) TLS.
+//! Connection abstraction over plain TCP and TLS.
 //!
 //! Connections are blocking with per-socket read/write timeouts. The traffic
 //! pattern here is tiny (a few bytes per socket per interval), so a single
@@ -7,6 +7,7 @@
 
 use std::io::{self, Read, Write};
 use std::net::{TcpStream, ToSocketAddrs};
+use std::sync::Arc;
 use std::time::Duration;
 
 use socket2::{Domain, Protocol, Socket, Type};
@@ -16,7 +17,6 @@ use crate::cli::Target;
 /// A live connection to the target.
 pub enum Stream {
     Plain(TcpStream),
-    #[cfg(feature = "tls")]
     Tls(Box<rustls::StreamOwned<rustls::ClientConnection, TcpStream>>),
 }
 
@@ -24,14 +24,12 @@ impl Write for Stream {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         match self {
             Stream::Plain(s) => s.write(buf),
-            #[cfg(feature = "tls")]
             Stream::Tls(s) => s.write(buf),
         }
     }
     fn flush(&mut self) -> io::Result<()> {
         match self {
             Stream::Plain(s) => s.flush(),
-            #[cfg(feature = "tls")]
             Stream::Tls(s) => s.flush(),
         }
     }
@@ -41,7 +39,6 @@ impl Read for Stream {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         match self {
             Stream::Plain(s) => s.read(buf),
-            #[cfg(feature = "tls")]
             Stream::Tls(s) => s.read(buf),
         }
     }
@@ -52,8 +49,8 @@ pub struct Connector {
     timeout: Duration,
     /// When set, `SO_RCVBUF` is shrunk to this many bytes (for slow-read).
     recv_buffer: Option<usize>,
-    #[cfg(feature = "tls")]
-    tls: Option<std::sync::Arc<rustls::ClientConfig>>,
+    /// Present for `https://` targets.
+    tls: Option<Arc<rustls::ClientConfig>>,
 }
 
 impl Connector {
@@ -63,25 +60,15 @@ impl Connector {
         recv_buffer: Option<usize>,
         insecure: bool,
     ) -> Result<Self, String> {
-        #[cfg(feature = "tls")]
         let tls = if target.tls {
             Some(tls::client_config(insecure)?)
         } else {
             None
         };
 
-        #[cfg(not(feature = "tls"))]
-        if target.tls {
-            let _ = insecure;
-            return Err(
-                "this binary was built without TLS support; rebuild with the `tls` feature".into(),
-            );
-        }
-
         Ok(Connector {
             timeout,
             recv_buffer,
-            #[cfg(feature = "tls")]
             tls,
         })
     }
@@ -106,7 +93,6 @@ impl Connector {
 
         let tcp: TcpStream = sock.into();
 
-        #[cfg(feature = "tls")]
         if let Some(cfg) = &self.tls {
             let server_name = rustls::pki_types::ServerName::try_from(target.host.clone())
                 .map_err(|_| {
@@ -121,7 +107,6 @@ impl Connector {
     }
 }
 
-#[cfg(feature = "tls")]
 mod tls {
     use std::sync::Arc;
 

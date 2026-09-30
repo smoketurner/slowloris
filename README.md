@@ -78,16 +78,11 @@ refuse the slow connections and stay responsive.
 
 ## Building
 
-Requires a C compiler and CMake (for the `aws-lc-rs` TLS backend). Omit TLS
-entirely with `--no-default-features` for an even smaller, pure-Rust binary
-(plain HTTP only).
+Requires a C compiler and CMake (for the `aws-lc-rs` TLS backend).
 
 ```sh
 # Native debug / release
 cargo build --release
-
-# Plain-HTTP only, no TLS, no C toolchain needed
-cargo build --release --no-default-features
 ```
 
 ### Static `aarch64` (arm64) musl binary

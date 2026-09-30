@@ -3,9 +3,9 @@
 //! identical). None of this is security-sensitive.
 //!
 //! To avoid a second RNG crate, the generator is seeded once from the entropy
-//! source we already link — `aws-lc-rs`, via rustls — when TLS is enabled. In
-//! the `--no-default-features` (no-TLS) build, aws-lc-rs isn't present, so we
-//! fall back to a time-based seed and keep that binary dependency-free.
+//! source we already link — `aws-lc-rs`, via rustls — with a time-based seed
+//! kept only as a fallback for the (extremely unlikely) case where the entropy
+//! source fails.
 
 /// splitmix64 — small, fast, good enough for jitter.
 pub struct Rng {
@@ -43,14 +43,11 @@ impl Default for Rng {
 }
 
 fn seed() -> u64 {
-    #[cfg(feature = "tls")]
-    {
-        let mut b = [0u8; 8];
-        if aws_lc_rs::rand::fill(&mut b).is_ok() {
-            return u64::from_le_bytes(b);
-        }
-        // Extremely unlikely; fall through to the time-based seed below.
+    let mut b = [0u8; 8];
+    if aws_lc_rs::rand::fill(&mut b).is_ok() {
+        return u64::from_le_bytes(b);
     }
+    // Extremely unlikely; fall through to the time-based seed below.
 
     let nanos = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
