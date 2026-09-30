@@ -8,14 +8,17 @@ on:
 env:
   CARGO_TERM_COLOR: always
 
+# Third-party actions are pinned to a full commit SHA (with the human-readable
+# version in a trailing comment) so a moved tag can't change what runs.
 jobs:
   check:
     name: fmt / clippy / test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master
         with:
+          toolchain: stable
           components: rustfmt, clippy
       - name: Install build deps (aws-lc-rs needs cmake)
         run: sudo apt-get update && sudo apt-get install -y cmake
@@ -38,9 +41,10 @@ jobs:
             runner: ubuntu-24.04-arm
             target: aarch64-unknown-linux-musl
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master
         with:
+          toolchain: stable
           targets: ${{ matrix.target }}
       - name: Install musl + cmake toolchain
         run: sudo apt-get update && sudo apt-get install -y musl-tools cmake
@@ -55,7 +59,7 @@ jobs:
           bin=target/${{ matrix.target }}/release/slowloris
           file "$bin"
           file "$bin" | grep -q "statically linked"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: slowloris-${{ matrix.target }}
           path: target/${{ matrix.target }}/release/slowloris
