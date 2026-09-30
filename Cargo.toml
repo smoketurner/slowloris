@@ -1,0 +1,40 @@
+[package]
+name = "slowloris"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+description = "A small, statically-linkable slow-HTTP resilience tester (Slowloris / slow-body / slow-read) for authorized load and DoS-resilience testing of your own web servers."
+license = "Apache-2.0 OR MIT"
+repository = "https://github.com/smoketurner/slowloris"
+readme = "README.md"
+keywords = ["slowloris", "http", "load-testing", "security", "dos"]
+categories = ["command-line-utilities", "network-programming"]
+
+[[bin]]
+name = "slowloris"
+path = "src/main.rs"
+
+# Every dependency is pinned to an exact version (`=x.y.z`) with default
+# features disabled; only the features actually used are re-enabled. TLS goes
+# through rustls + aws-lc-rs (never ring or OpenSSL), matching the crypto
+# convention used across smoketurner's Rust projects.
+[dependencies]
+clap = { version = "=4.6.7", default-features = false, features = ["std", "derive", "help", "usage", "error-context"] }
+mimalloc = { version = "=0.1.52", default-features = false, features = ["secure"] }
+rand = { version = "=0.8.5", default-features = false, features = ["std", "std_rng"] }
+socket2 = { version = "=0.5.10", default-features = false }
+
+# TLS is optional so the plain-HTTP binary stays tiny and dependency-free.
+rustls = { version = "=0.23.45", default-features = false, features = ["aws_lc_rs", "std", "tls12", "logging"], optional = true }
+webpki-roots = { version = "=1.0.9", default-features = false, optional = true }
+
+[features]
+default = ["tls"]
+tls = ["dep:rustls", "dep:webpki-roots"]
+
+[profile.release]
+strip = true      # strip symbols from the binary
+lto = true        # full link-time optimization for size
+codegen-units = 1 # maximize size reduction
+panic = "abort"   # terminate on panic (also drops unwinding tables)
+opt-level = "z"   # optimize aggressively for size
