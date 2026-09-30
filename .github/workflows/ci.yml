@@ -58,7 +58,8 @@ jobs:
         run: |
           bin=target/${{ matrix.target }}/release/slowloris
           file "$bin"
-          file "$bin" | grep -q "statically linked"
+          # musl static binaries are static-PIE; `file` may report either form.
+          file "$bin" | grep -qE "statically linked|static-pie linked"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: slowloris-${{ matrix.target }}
