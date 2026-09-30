@@ -115,8 +115,9 @@ rustup target add aarch64-unknown-linux-musl
 cargo build --release --target aarch64-unknown-linux-musl
 ```
 
-CI (`.github/workflows/ci.yml`) builds and uploads static `x86_64` and
-`aarch64` musl binaries on every push.
+CI (`.github/workflows/ci.yml`) builds and uploads a static `aarch64`
+Linux musl binary and a macOS `arm64` (`aarch64-apple-darwin`) binary on
+every push.
 
 ## License
 

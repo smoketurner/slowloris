@@ -8,14 +8,17 @@ on:
 env:
   CARGO_TERM_COLOR: always
 
+# Third-party actions are pinned to a full commit SHA (with the human-readable
+# version in a trailing comment) so a moved tag can't change what runs.
 jobs:
   check:
     name: fmt / clippy / test
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04-arm
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master
         with:
+          toolchain: stable
           components: rustfmt, clippy
       - name: Install build deps (aws-lc-rs needs cmake)
         run: sudo apt-get update && sudo apt-get install -y cmake
@@ -23,39 +26,44 @@ jobs:
       - run: cargo clippy --all-targets -- -D warnings
       - run: cargo test --locked
 
-  # Static musl binaries, built natively on each arch (no `cross` required).
-  build-musl:
-    name: static musl (${{ matrix.arch }})
+  build:
+    name: build (${{ matrix.name }})
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
       matrix:
         include:
-          - arch: x86_64
-            runner: ubuntu-latest
-            target: x86_64-unknown-linux-musl
-          - arch: aarch64
+          - name: linux-arm64-musl
             runner: ubuntu-24.04-arm
             target: aarch64-unknown-linux-musl
+            static: true
+          - name: macos-arm64
+            runner: macos-14
+            target: aarch64-apple-darwin
+            static: false
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master
         with:
+          toolchain: stable
           targets: ${{ matrix.target }}
-      - name: Install musl + cmake toolchain
+      - name: Install musl + cmake toolchain (Linux)
+        if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y musl-tools cmake
-      - name: Build (static)
+      - name: Build
         env:
-          # aws-lc-rs compiles C — build it with the native musl compiler.
-          CC_x86_64_unknown_linux_musl: musl-gcc
+          # aws-lc-rs compiles C — build the musl target with the native musl
+          # compiler. Ignored by the macOS target (which uses the system cc).
           CC_aarch64_unknown_linux_musl: musl-gcc
         run: cargo build --release --locked --target ${{ matrix.target }}
       - name: Verify it is statically linked
+        if: matrix.static
         run: |
           bin=target/${{ matrix.target }}/release/slowloris
           file "$bin"
-          file "$bin" | grep -q "statically linked"
-      - uses: actions/upload-artifact@v4
+          # musl static binaries are static-PIE; `file` may report either form.
+          file "$bin" | grep -qE "statically linked|static-pie linked"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: slowloris-${{ matrix.target }}
           path: target/${{ matrix.target }}/release/slowloris
