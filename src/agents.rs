@@ -2,7 +2,7 @@
 //! that trivial "same UA" rate-limit heuristics don't collapse all the test
 //! connections into one bucket.
 
-use rand::seq::SliceRandom;
+use crate::rng::Rng;
 
 const AGENTS: &[&str] = &[
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
@@ -14,9 +14,7 @@ const AGENTS: &[&str] = &[
 ];
 
 /// Return a random User-Agent from the pool.
-pub fn random() -> &'static str {
-    AGENTS
-        .choose(&mut rand::thread_rng())
-        .copied()
-        .unwrap_or(AGENTS[0])
+pub fn random(rng: &mut Rng) -> &'static str {
+    let idx = rng.index(AGENTS.len());
+    AGENTS.get(idx).copied().unwrap_or(AGENTS[0])
 }

@@ -4,10 +4,9 @@
 use std::io::{ErrorKind, Read, Write};
 use std::time::{Duration, Instant};
 
-use rand::Rng;
-
 use crate::agents;
 use crate::cli::{Args, Mode, Target};
+use crate::rng::Rng;
 use crate::stream::{Connector, Stream};
 
 /// One tracked connection and the per-connection state the mode needs.
@@ -25,6 +24,7 @@ pub struct Engine<'a> {
     connector: Connector,
     user_agent: String,
     conns: Vec<Conn>,
+    rng: Rng,
 }
 
 impl<'a> Engine<'a> {
@@ -37,10 +37,11 @@ impl<'a> Engine<'a> {
             None
         };
         let connector = Connector::new(&target, args.timeout(), recv_buffer, args.insecure)?;
+        let mut rng = Rng::new();
         let user_agent = args
             .user_agent
             .clone()
-            .unwrap_or_else(|| agents::random().to_string());
+            .unwrap_or_else(|| agents::random(&mut rng).to_string());
 
         Ok(Engine {
             args,
@@ -48,6 +49,7 @@ impl<'a> Engine<'a> {
             connector,
             user_agent,
             conns: Vec::with_capacity(args.connections),
+            rng,
         })
     }
 
@@ -113,9 +115,8 @@ impl<'a> Engine<'a> {
     }
 
     /// Send the opening (deliberately incomplete) request for a new connection.
-    fn open_request(&self, mut stream: Stream) -> std::io::Result<Conn> {
-        let mut rng = rand::thread_rng();
-        let rand_q: u32 = rng.gen_range(1..=100_000);
+    fn open_request(&mut self, mut stream: Stream) -> std::io::Result<Conn> {
+        let rand_q: u32 = self.rng.range_1(100_000);
         let mut body_remaining = 0;
 
         match self.args.mode {
@@ -184,20 +185,20 @@ impl<'a> Engine<'a> {
     /// Feed each live connection one small unit of data (or read a sip), and
     /// drop the ones the server has closed.
     fn keepalive(&mut self) {
-        let mode = self.args.mode;
-        let verbose = self.args.verbose;
-        let mut rng = rand::thread_rng();
+        // Split borrows so the retain_mut closure can touch `rng` while it
+        // holds `conns` mutably.
+        let Self {
+            conns, rng, args, ..
+        } = self;
+        let mode = args.mode;
+        let verbose = args.verbose;
 
-        self.conns.retain_mut(|conn| {
+        conns.retain_mut(|conn| {
             let result: std::io::Result<()> = match mode {
                 Mode::Headers => {
                     // One more bogus-but-well-formed header line. Never the
                     // blank line that would end the header block.
-                    let line = format!(
-                        "X-{}: {}\r\n",
-                        rng.gen_range(1..=5000),
-                        rng.gen_range(1..=5000)
-                    );
+                    let line = format!("X-{}: {}\r\n", rng.range_1(5000), rng.range_1(5000));
                     conn.stream
                         .write_all(line.as_bytes())
                         .and_then(|_| conn.stream.flush())

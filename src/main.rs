@@ -8,6 +8,7 @@
 mod agents;
 mod cli;
 mod engine;
+mod rng;
 mod stream;
 
 use std::process::ExitCode;

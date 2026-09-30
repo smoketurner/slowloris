@@ -21,16 +21,18 @@ path = "src/main.rs"
 [dependencies]
 clap = { version = "=4.6.7", default-features = false, features = ["std", "derive", "help", "usage", "error-context"] }
 mimalloc = { version = "=0.1.52", default-features = false, features = ["secure"] }
-rand = { version = "=0.8.5", default-features = false, features = ["std", "std_rng"] }
 socket2 = { version = "=0.5.10", default-features = false }
 
 # TLS is optional so the plain-HTTP binary stays tiny and dependency-free.
+# When TLS is on we also reuse aws-lc-rs (already linked via rustls) as the
+# entropy source for cosmetic request jitter, so there is no separate RNG crate.
 rustls = { version = "=0.23.45", default-features = false, features = ["aws_lc_rs", "std", "tls12", "logging"], optional = true }
+aws-lc-rs = { version = "=1.18.1", default-features = false, optional = true }
 webpki-roots = { version = "=1.0.9", default-features = false, optional = true }
 
 [features]
 default = ["tls"]
-tls = ["dep:rustls", "dep:webpki-roots"]
+tls = ["dep:rustls", "dep:aws-lc-rs", "dep:webpki-roots"]
 
 [profile.release]
 strip = true      # strip symbols from the binary
