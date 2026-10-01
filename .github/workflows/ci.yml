@@ -1,12 +1,25 @@
 name: ci
 
 on:
+  # Run once per change: `pull_request` covers branches with an open PR,
+  # `push` covers the default branch after merge. Branches with no PR get no
+  # redundant second run.
   push:
-    branches: ["**"]
+    branches: [main]
   pull_request:
+
+# Cancel superseded runs when a branch/PR is pushed again.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 env:
   CARGO_TERM_COLOR: always
+
+# Least privilege: jobs only read the repo. Narrow further at the job level if
+# one ever needs more.
+permissions:
+  contents: read
 
 # Third-party actions are pinned to a full commit SHA (with the human-readable
 # version in a trailing comment) so a moved tag can't change what runs.
@@ -16,10 +29,17 @@ jobs:
     runs-on: ubuntu-24.04-arm
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master
         with:
-          toolchain: stable
+          toolchain: "1.98.1"
           components: rustfmt, clippy
+      # Cache the cargo registry and target dir; the aws-lc-rs C build dominates
+      # a cold compile. Save only from main so a PR can't poison the cache.
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: Install build deps (aws-lc-rs needs cmake)
         run: sudo apt-get update && sudo apt-get install -y cmake
       - run: cargo fmt --all --check
@@ -43,10 +63,17 @@ jobs:
             static: false
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master
         with:
-          toolchain: stable
+          toolchain: "1.98.1"
           targets: ${{ matrix.target }}
+      # Separate cache per target so the musl and darwin builds don't collide.
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          key: ${{ matrix.target }}
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: Install musl + cmake toolchain (Linux)
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y musl-tools cmake

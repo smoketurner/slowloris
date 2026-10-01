@@ -6,7 +6,7 @@ use clap::{Parser, ValueEnum};
 
 /// The slow-HTTP attack variant to run.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, ValueEnum)]
-pub enum Mode {
+pub(crate) enum Mode {
     /// Slowloris: open connections and dribble out request *headers*, never
     /// sending the terminating blank line. (slowhttptest `-H`)
     Headers,
@@ -36,77 +36,77 @@ impl std::fmt::Display for Mode {
 /// be illegal.
 #[derive(Parser, Debug)]
 #[command(name = "slowloris", version, about, long_about = None)]
-pub struct Args {
+pub(crate) struct Args {
     /// Target URL, e.g. `http://127.0.0.1:8080/` or `https://example.test`.
-    pub url: String,
+    pub(crate) url: String,
 
     /// Attack mode.
     #[arg(short, long, value_enum, default_value_t = Mode::Headers)]
-    pub mode: Mode,
+    pub(crate) mode: Mode,
 
     /// Number of concurrent connections to maintain.
     #[arg(short = 'c', long, default_value_t = 150)]
-    pub connections: usize,
+    pub(crate) connections: usize,
 
     /// Seconds between follow-up data on each connection (the "slow" interval).
     #[arg(short = 'i', long, default_value_t = 15)]
-    pub interval: u64,
+    pub(crate) interval: u64,
 
     /// New connections to open per second while ramping up / replacing dead ones.
     #[arg(short = 'r', long, default_value_t = 50)]
-    pub rate: usize,
+    pub(crate) rate: usize,
 
     /// Stop after this many seconds (0 = run until Ctrl-C).
     #[arg(short = 'l', long, default_value_t = 0)]
-    pub duration: u64,
+    pub(crate) duration: u64,
 
     /// Request path override (otherwise taken from the URL).
     #[arg(long)]
-    pub path: Option<String>,
+    pub(crate) path: Option<String>,
 
     /// Advertised Content-Length for `body` mode (bytes dribbled out slowly).
     #[arg(long, default_value_t = 8192)]
-    pub content_length: usize,
+    pub(crate) content_length: usize,
 
     /// Per-socket connect/IO timeout in seconds.
     #[arg(long, default_value_t = 10)]
-    pub timeout: u64,
+    pub(crate) timeout: u64,
 
     /// User-Agent header value (a random desktop UA is used if unset).
     #[arg(long)]
-    pub user_agent: Option<String>,
+    pub(crate) user_agent: Option<String>,
 
     /// Skip TLS certificate verification (for self-signed / internal test hosts).
     #[arg(short = 'k', long)]
-    pub insecure: bool,
+    pub(crate) insecure: bool,
 
     /// Print per-connection detail.
     #[arg(short, long)]
-    pub verbose: bool,
+    pub(crate) verbose: bool,
 }
 
 impl Args {
-    pub fn interval(&self) -> Duration {
+    pub(crate) fn interval(&self) -> Duration {
         Duration::from_secs(self.interval.max(1))
     }
-    pub fn timeout(&self) -> Duration {
+    pub(crate) fn timeout(&self) -> Duration {
         Duration::from_secs(self.timeout.max(1))
     }
 }
 
 /// A parsed target: scheme, host, port, path.
 #[derive(Clone, Debug)]
-pub struct Target {
-    pub tls: bool,
-    pub host: String,
-    pub port: u16,
-    pub path: String,
+pub(crate) struct Target {
+    pub(crate) tls: bool,
+    pub(crate) host: String,
+    pub(crate) port: u16,
+    pub(crate) path: String,
 }
 
 impl Target {
     /// Parse a URL. Accepts `http://` / `https://`; a bare `host:port` is
     /// treated as plain HTTP.
-    pub fn parse(url: &str, path_override: Option<&str>) -> Result<Target, String> {
+    pub(crate) fn parse(url: &str, path_override: Option<&str>) -> Result<Target, String> {
         let (tls, rest) = if let Some(r) = url.strip_prefix("https://") {
             (true, r)
         } else if let Some(r) = url.strip_prefix("http://") {
@@ -115,9 +115,10 @@ impl Target {
             (false, url)
         };
 
-        // Split host[:port] from the path.
+        // Split host[:port] from the path. `find` returns a byte index at the
+        // start of '/', which is a valid char boundary for `split_at`.
         let (authority, url_path) = match rest.find('/') {
-            Some(idx) => (&rest[..idx], &rest[idx..]),
+            Some(idx) => rest.split_at(idx),
             None => (rest, "/"),
         };
         if authority.is_empty() {
@@ -134,9 +135,7 @@ impl Target {
             None => (authority.to_string(), if tls { 443 } else { 80 }),
         };
 
-        let path = path_override
-            .map(|s| s.to_string())
-            .unwrap_or_else(|| url_path.to_string());
+        let path = path_override.map_or_else(|| url_path.to_string(), ToString::to_string);
 
         Ok(Target {
             tls,
@@ -148,6 +147,10 @@ impl Target {
 }
 
 #[cfg(test)]
+#[expect(
+    clippy::unwrap_used,
+    reason = "tests assert on fixed, known-valid inputs; a failed parse surfacing as a panic is the test failing"
+)]
 mod tests {
     use super::*;
 

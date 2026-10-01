@@ -6,7 +6,7 @@ use std::time::{Duration, Instant};
 
 use crate::agents;
 use crate::cli::{Args, Mode, Target};
-use crate::rng::Rng;
+use crate::rng;
 use crate::stream::{Connector, Stream};
 
 /// One tracked connection and the per-connection state the mode needs.
@@ -18,17 +18,16 @@ struct Conn {
     read_scratch: Vec<u8>,
 }
 
-pub struct Engine<'a> {
+pub(crate) struct Engine<'a> {
     args: &'a Args,
     target: Target,
     connector: Connector,
     user_agent: String,
     conns: Vec<Conn>,
-    rng: Rng,
 }
 
 impl<'a> Engine<'a> {
-    pub fn new(args: &'a Args, target: Target) -> Result<Self, String> {
+    pub(crate) fn new(args: &'a Args, target: Target) -> Result<Self, String> {
         // Slow-read benefits from a tiny receive buffer so the kernel/app can't
         // just hand us the whole response at once.
         let recv_buffer = if args.mode == Mode::Read {
@@ -37,11 +36,10 @@ impl<'a> Engine<'a> {
             None
         };
         let connector = Connector::new(&target, args.timeout(), recv_buffer, args.insecure)?;
-        let mut rng = Rng::new();
         let user_agent = args
             .user_agent
             .clone()
-            .unwrap_or_else(|| agents::random(&mut rng).to_string());
+            .unwrap_or_else(|| agents::random().to_string());
 
         Ok(Engine {
             args,
@@ -49,11 +47,10 @@ impl<'a> Engine<'a> {
             connector,
             user_agent,
             conns: Vec::with_capacity(args.connections),
-            rng,
         })
     }
 
-    pub fn run(&mut self) -> Result<(), String> {
+    pub(crate) fn run(&mut self) -> Result<(), String> {
         let started = Instant::now();
         let interval = self.args.interval();
 
@@ -94,7 +91,7 @@ impl<'a> Engine<'a> {
                 Ok(stream) => match self.open_request(stream) {
                     Ok(conn) => {
                         self.conns.push(conn);
-                        opened += 1;
+                        opened = opened.saturating_add(1);
                     }
                     Err(e) => {
                         if self.args.verbose {
@@ -116,7 +113,7 @@ impl<'a> Engine<'a> {
 
     /// Send the opening (deliberately incomplete) request for a new connection.
     fn open_request(&mut self, mut stream: Stream) -> std::io::Result<Conn> {
-        let rand_q: u32 = self.rng.range_1(100_000);
+        let rand_q: u32 = rng::range_1(100_000);
         let mut body_remaining = 0;
 
         match self.args.mode {
@@ -185,32 +182,28 @@ impl<'a> Engine<'a> {
     /// Feed each live connection one small unit of data (or read a sip), and
     /// drop the ones the server has closed.
     fn keepalive(&mut self) {
-        // Split borrows so the retain_mut closure can touch `rng` while it
-        // holds `conns` mutably.
-        let Self {
-            conns, rng, args, ..
-        } = self;
-        let mode = args.mode;
-        let verbose = args.verbose;
+        let mode = self.args.mode;
+        let verbose = self.args.verbose;
+        let conns = &mut self.conns;
 
         conns.retain_mut(|conn| {
             let result: std::io::Result<()> = match mode {
                 Mode::Headers => {
                     // One more bogus-but-well-formed header line. Never the
                     // blank line that would end the header block.
-                    let line = format!("X-{}: {}\r\n", rng.range_1(5000), rng.range_1(5000));
+                    let line = format!("X-{}: {}\r\n", rng::range_1(5000), rng::range_1(5000));
                     conn.stream
                         .write_all(line.as_bytes())
-                        .and_then(|_| conn.stream.flush())
+                        .and_then(|()| conn.stream.flush())
                 }
                 Mode::Body => {
                     if conn.body_remaining > 0 {
                         let r = conn
                             .stream
                             .write_all(b"a")
-                            .and_then(|_| conn.stream.flush());
+                            .and_then(|()| conn.stream.flush());
                         if r.is_ok() {
-                            conn.body_remaining -= 1;
+                            conn.body_remaining = conn.body_remaining.saturating_sub(1);
                         }
                         r
                     } else {
@@ -260,11 +253,15 @@ impl<'a> Engine<'a> {
     fn report(&self) {
         let now = time_hhmmss();
         print!("\r[{now}] active connections: {:>5}", self.conns.len());
-        let _ = std::io::stdout().flush();
+        std::io::stdout().flush().ok();
     }
 }
 
 /// Wall-clock HH:MM:SS without pulling in a date/time crate.
+#[expect(
+    clippy::integer_division,
+    reason = "clock arithmetic is intentionally truncating integer division"
+)]
 fn time_hhmmss() -> String {
     let secs = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
