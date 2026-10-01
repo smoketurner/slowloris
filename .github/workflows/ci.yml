@@ -35,6 +35,11 @@ jobs:
         with:
           toolchain: "1.98.1"
           components: rustfmt, clippy
+      # Cache the cargo registry and target dir; the aws-lc-rs C build dominates
+      # a cold compile. Save only from main so a PR can't poison the cache.
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: Install build deps (aws-lc-rs needs cmake)
         run: sudo apt-get update && sudo apt-get install -y cmake
       - run: cargo fmt --all --check
@@ -64,6 +69,11 @@ jobs:
         with:
           toolchain: "1.98.1"
           targets: ${{ matrix.target }}
+      # Separate cache per target so the musl and darwin builds don't collide.
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          key: ${{ matrix.target }}
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: Install musl + cmake toolchain (Linux)
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y musl-tools cmake
