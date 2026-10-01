@@ -1,9 +1,17 @@
 name: ci
 
 on:
+  # Run once per change: `pull_request` covers branches with an open PR,
+  # `push` covers the default branch after merge. Branches with no PR get no
+  # redundant second run.
   push:
-    branches: ["**"]
+    branches: [main]
   pull_request:
+
+# Cancel superseded runs when a branch/PR is pushed again.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 env:
   CARGO_TERM_COLOR: always
