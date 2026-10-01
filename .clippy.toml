@@ -1,0 +1,15 @@
+# Scope `clippy::absolute_paths` (denied in Cargo.toml) so it fires only on
+# inline own-crate paths (`crate::…`), nudging those toward `use` imports.
+# std and the external dependencies are allowed so their paths may be written
+# inline (e.g. `std::io::stdout`, `aws_lc_rs::rand::fill`).
+absolute-paths-allowed-crates = [
+    "std",
+    "core",
+    "alloc",
+    "clap",
+    "mimalloc",
+    "socket2",
+    "rustls",
+    "aws_lc_rs",
+    "webpki_roots",
+]

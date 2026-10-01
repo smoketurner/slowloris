@@ -15,7 +15,7 @@ use socket2::{Domain, Protocol, Socket, Type};
 use crate::cli::Target;
 
 /// A live connection to the target.
-pub enum Stream {
+pub(crate) enum Stream {
     Plain(TcpStream),
     Tls(Box<rustls::StreamOwned<rustls::ClientConnection, TcpStream>>),
 }
@@ -45,7 +45,7 @@ impl Read for Stream {
 }
 
 /// Builds connections to a fixed target with shared settings.
-pub struct Connector {
+pub(crate) struct Connector {
     timeout: Duration,
     /// When set, `SO_RCVBUF` is shrunk to this many bytes (for slow-read).
     recv_buffer: Option<usize>,
@@ -54,7 +54,7 @@ pub struct Connector {
 }
 
 impl Connector {
-    pub fn new(
+    pub(crate) fn new(
         target: &Target,
         timeout: Duration,
         recv_buffer: Option<usize>,
@@ -74,7 +74,7 @@ impl Connector {
     }
 
     /// Open one connection (TCP connect + TLS handshake, if applicable).
-    pub fn connect(&self, target: &Target) -> io::Result<Stream> {
+    pub(crate) fn connect(&self, target: &Target) -> io::Result<Stream> {
         let addr = (target.host.as_str(), target.port)
             .to_socket_addrs()?
             .next()
@@ -88,7 +88,7 @@ impl Connector {
         sock.set_nodelay(true)?;
         if let Some(sz) = self.recv_buffer {
             // Best effort: the kernel may clamp this to a floor.
-            let _ = sock.set_recv_buffer_size(sz);
+            sock.set_recv_buffer_size(sz).ok();
         }
 
         let tcp: TcpStream = sock.into();
@@ -115,7 +115,7 @@ mod tls {
     use rustls::pki_types::{CertificateDer, ServerName, UnixTime};
     use rustls::{ClientConfig, DigitallySignedStruct, Error, RootCertStore, SignatureScheme};
 
-    pub fn client_config(insecure: bool) -> Result<Arc<ClientConfig>, String> {
+    pub(super) fn client_config(insecure: bool) -> Result<Arc<ClientConfig>, String> {
         let provider = Arc::new(aws_lc_rs::default_provider());
 
         if insecure {
