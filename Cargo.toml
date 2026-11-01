@@ -26,7 +26,7 @@ socket2 = { version = "=0.5.10", default-features = false }
 # TLS goes through rustls + aws-lc-rs (never ring or OpenSSL). aws-lc-rs is also
 # reused as the entropy source for cosmetic request jitter, so there is no
 # separate RNG crate.
-rustls = { version = "=0.23.45", default-features = false, features = ["aws_lc_rs", "std", "tls12", "logging"] }
+rustls = { version = "=0.23.46", default-features = false, features = ["aws_lc_rs", "std", "tls12", "logging"] }
 aws-lc-rs = { version = "=1.18.1", default-features = false }
 webpki-roots = { version = "=1.0.9", default-features = false }
 
